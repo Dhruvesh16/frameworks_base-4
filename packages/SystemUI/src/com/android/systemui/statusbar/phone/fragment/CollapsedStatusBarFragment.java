@@ -30,6 +30,9 @@ import android.annotation.SuppressLint;
 import android.app.Fragment;
 import android.database.ContentObserver;
 import android.content.Context;
+import android.content.ContentResolver;
+import android.database.ContentObserver;
+import android.os.Handler;
 import android.os.Bundle;
 import android.os.Parcelable;
 import android.os.UserHandle;
@@ -121,6 +124,9 @@ public class CollapsedStatusBarFragment extends Fragment implements CommandQueue
     private View mClockView;
     private View mOngoingCallChip;
     private View mNotificationIconAreaInner;
+    private View mCenterClock;
+    private View mLeftClock;
+    private View mRightClock;
     private int mDisabled1;
     private int mDisabled2;
     private DarkIconManager mDarkIconManager;
@@ -143,6 +149,27 @@ public class CollapsedStatusBarFragment extends Fragment implements CommandQueue
     private final DumpManager mDumpManager;
     private ClockController mClockController;
     private boolean mIsClockBlacklisted;
+
+    private boolean mShowSBClockBg = true;
+    private final Handler mHandler = new Handler();
+
+    private class SettingsObserver extends ContentObserver {
+       SettingsObserver(Handler handler) {
+           super(handler);
+       }
+       void observe() {
+         mContentResolver.registerContentObserver(Settings.System.getUriFor(
+                    Settings.System.STATUSBAR_CLOCK_CHIP),
+                    false, this, UserHandle.USER_ALL);
+       }
+
+       @Override
+       public void onChange(boolean selfChange) {
+           updateSettings(true);
+       }
+    }
+    private SettingsObserver mSettingsObserver;
+    private ContentResolver mContentResolver;
 
     private List<String> mBlockedIcons = new ArrayList<>();
     private Map<Startable, Startable.State> mStartableStates = new ArrayMap<>();
@@ -261,12 +288,17 @@ public class CollapsedStatusBarFragment extends Fragment implements CommandQueue
         }
         mDarkIconManager = mDarkIconManagerFactory.create(
                 view.findViewById(R.id.statusIcons), StatusBarLocation.HOME);
+        mContentResolver = getContext().getContentResolver();
+        mSettingsObserver = new SettingsObserver(mHandler);
         mDarkIconManager.setShouldLog(true);
         updateBlockedIcons();
         mStatusBarIconController.addIconGroup(mDarkIconManager);
         mEndSideContent = mStatusBar.findViewById(R.id.status_bar_end_side_content);
         mClockController = mStatusBar.getClockController();
         mOngoingCallChip = mStatusBar.findViewById(R.id.ongoing_call_chip);
+        mCenterClock = mStatusBar.findViewById(R.id.clock_center);
+        mLeftClock = mStatusBar.findViewById(R.id.clock);
+        mRightClock = mStatusBar.findViewById(R.id.clock_right);
         showEndSideContent(false);
         showClock(false);
         initEmergencyCryptkeeperText();
@@ -278,6 +310,8 @@ public class CollapsedStatusBarFragment extends Fragment implements CommandQueue
                 new StatusBarSystemEventAnimator(mEndSideContent, getResources());
         mCarrierConfigTracker.addCallback(mCarrierConfigCallback);
         mCarrierConfigTracker.addDefaultDataSubscriptionChangedListener(mDefaultDataListener);
+        mSettingsObserver.observe();
+        updateSettings(false);
     }
 
     @VisibleForTesting
@@ -743,6 +777,37 @@ public class CollapsedStatusBarFragment extends Fragment implements CommandQueue
                 pw.println(startable + ", state: " + startableState);
             }
             pw.decreaseIndent();
+        }
+    }
+
+    public void updateSettings(boolean animate) {
+
+        mShowSBClockBg = Settings.System.getIntForUser(mContentResolver,
+                Settings.System.STATUSBAR_CLOCK_CHIP, 0,
+                UserHandle.USER_CURRENT) == 1;
+
+        if (mShowSBClockBg) {
+            mLeftClock.setBackgroundResource(R.drawable.sb_date_bg);
+            mLeftClock.setPadding(10,5,10,5);
+            mCenterClock.setBackgroundResource(R.drawable.sb_date_bg);
+            mCenterClock.setPadding(10,5,10,5);
+            mRightClock.setBackgroundResource(R.drawable.sb_date_bg);
+            mRightClock.setPadding(10,5,10,5);
+        } else {
+            int clockPaddingStart = getResources().getDimensionPixelSize(
+                    R.dimen.status_bar_clock_starting_padding);
+            int clockPaddingEnd = getResources().getDimensionPixelSize(
+                    R.dimen.status_bar_clock_end_padding);
+            int leftClockPaddingStart = getResources().getDimensionPixelSize(
+                    R.dimen.status_bar_left_clock_starting_padding);
+            int leftClockPaddingEnd = getResources().getDimensionPixelSize(
+                    R.dimen.status_bar_left_clock_end_padding);
+            mLeftClock.setBackgroundResource(0);
+            mLeftClock.setPadding(leftClockPaddingStart, 0, leftClockPaddingEnd, 0);
+            mCenterClock.setBackgroundResource(0);
+            mCenterClock.setPadding(0,0,0,0);
+            mRightClock.setBackgroundResource(0);
+            mRightClock.setPadding(clockPaddingStart, 0, clockPaddingEnd, 0);
         }
     }
 }
